@@ -1,0 +1,64 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+
+# Read in data from Github CSV file
+url = 'https://raw.githubusercontent.com/michmazbout/testwhatever/main/precipitation_data.csv'
+data = pd.read_csv(url)
+
+# Combine date and time columns into a single datetime column
+data['datetime'] = pd.to_datetime(data['date'] + ' ' + data['time'])
+
+# Set datetime column as index
+data.set_index('datetime', inplace=True)
+
+# Calculate annual total precipitation
+annual_precip = data.resample('Y').sum()
+
+# Find maximum annual precipitation and sort in descending order
+max_annual_precip = annual_precip['precipitation'].sort_values(ascending=False)
+
+# Rank each annual precipitation
+rank = np.arange(1, len(max_annual_precip)+1)
+
+# Calculate frequency of each annual precipitation
+n = len(max_annual_precip)
+frequency = (rank - 0.5) / n
+
+# Calculate return period for each frequency
+return_period = 1 / (1 - frequency)
+
+# Compute the reduced variable for each frequency
+def reduced_var(f, a, b):
+    return -np.log(-np.log(f)) * a + b
+
+popt, _ = curve_fit(reduced_var, frequency, max_annual_precip)
+
+# Plot the trendline against the reduced variable
+fig, ax = plt.subplots()
+ax.scatter(-np.log(-np.log(frequency)), max_annual_precip)
+x = np.linspace(0, 1, 100)
+ax.plot(-np.log(-np.log(x)), reduced_var(x, *popt), 'r-')
+ax.set_xlabel('Reduced Variable')
+ax.set_ylabel('Maximum Annual Precipitation (mm)')
+ax.set_title('Maximum Annual Precipitation vs Reduced Variable')
+
+# Choose return periods and calculate corresponding frequency and intensity
+return_periods = [2, 5, 10, 25, 50, 100, 250, 500, 1000]
+fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+fig.suptitle('Intensity vs Duration for Different Return Periods')
+for i, T in enumerate(return_periods):
+    f = 1 - 1 / T
+    freq = (T - 1) / T
+    intensity = reduced_var(freq, *popt)
+    row = i // 3
+    col = i % 3
+    axs[row, col].set_title('Return Period: {} years'.format(T))
+    axs[row, col].set_xlabel('Duration (hours)')
+    axs[row, col].set_ylabel('Intensity (mm/hr)')
+    durations = np.arange(1, 25)
+    axs[row, col].plot(durations, intensity * durations ** (-0.25), label='Intensity')
+    axs[row, col].legend()
+
+plt.show()
